@@ -3,11 +3,20 @@
 	"EngineAssociation": "4.23",
 	"Category": "",
 	"Description": "",
+	"Modules": [
+		{
+			"Name": "PensionS",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
 	"Plugins": [
 		{
-			"Name": "DialoguePlugin",
-			"Enabled": true,
-			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/847aa65dc3024a37ae83ed89307524bd"
+			"Name": "Interaction_System",
+			"Enabled": true
 		}
 	]
 }

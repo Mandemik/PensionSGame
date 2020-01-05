@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Interaction_System",
+	"Description": "Interaction System",
+	"Category": "Other",
+	"CreatedBy": "Andrzej Serazetdinow",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Interaction_System",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
