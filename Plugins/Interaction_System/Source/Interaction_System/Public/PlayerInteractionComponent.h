@@ -11,6 +11,12 @@ class USphereComponent;
 class UArrowComponent;
 class UUserWidget;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractableSubscribed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractableUnsubscribed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFirstInteractableSubscribed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNoInteractablesLeft);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerCanInteract);
+
 USTRUCT(BlueprintType)
 struct FDebugStringProperties
 {
@@ -47,7 +53,7 @@ class INTERACTION_SYSTEM_API UPlayerInteractionComponent final : public UActorCo
 
 private:
 
-	bool IsInteractionWidgetHidden = true;
+	bool IsInteractionWidgetHidden : 1;
 
 	TArray<UInteractableComponent*> ActorsToInteract;
 
@@ -91,6 +97,12 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
 	bool bHideInteractionMarkerWhenPlayerCanInteract = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
+	bool bRotateWidgetsTowardsPlayerCamera = true;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
+	bool bRotateWidgetsTowardsPlayerPawn = false;
 
 private:
 
@@ -142,6 +154,27 @@ public:
 	void TryShowInteractionWidget(UInteractableComponent* Component);
 
 	void TryHideInteractionWidget(UInteractableComponent* Component);
+
+#pragma endregion
+
+#pragma region Delegates
+
+public:
+
+	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
+	FOnInteractableSubscribed OnInteractableSubscribedDelegate;
+
+	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
+	FOnInteractableUnsubscribed OnInteractableUnsubscribedDelegate;
+
+	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
+	FOnFirstInteractableSubscribed OnFirstInteractableSubscribedDelegate;
+
+	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
+	FOnNoInteractablesLeft OnNoInteractablesLeftDelegate;
+
+	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
+	FOnPlayerCanInteract OnCanInteractDelegate;
 
 #pragma endregion
 

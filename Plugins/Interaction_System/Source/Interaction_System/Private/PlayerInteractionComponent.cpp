@@ -16,6 +16,10 @@ UPlayerInteractionComponent::UPlayerInteractionComponent()
 	SphereComponent = CreateDefaultSubobject<USphereComponent>(FName("InteractionCollision"));
 	PlayerInteractableForwardVector = CreateDefaultSubobject<UArrowComponent>(FName("InteractableForwardVector"));
 
+	bReplicates = false;
+
+	IsInteractionWidgetHidden = true;
+
 	if (GetOwner())
 	{
 		SphereComponent->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
@@ -28,7 +32,7 @@ void UPlayerInteractionComponent::BeginPlay()
 	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &UPlayerInteractionComponent::OnOverlapBegin);
 	SphereComponent->OnComponentEndOverlap.AddDynamic(this, &UPlayerInteractionComponent::OnOverlapEnd);
 
-	TArray<AActor*> OverlappingActors; 
+	TArray<AActor*> OverlappingActors;
 	SphereComponent->GetOverlappingActors(OverlappingActors, TSubclassOf<AActor>());
 
 	for (const auto& Actor : OverlappingActors)
@@ -79,7 +83,9 @@ void UPlayerInteractionComponent::TryHideInteractionWidget(UInteractableComponen
 
 void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
 {
-	if (!Actor)
+	APawn* Temp = Cast<APawn>(GetOwner());
+
+	if (!Actor || !Temp || !Temp->IsLocallyControlled())
 	{
 		return;
 	}
@@ -91,11 +97,16 @@ void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
 		if (ActorsToInteract.Contains(Component))
 		{
 
-			if (Component->SubscribedPlayer)
+			if (Component->AmountOfSubscribedPlayers > 0)
 			{
-				Component->UnsubscribeFromPlayer();
+				Component->UnsubscribeFromComponent(GetOwner());
 				TryHideInteractionMarker(Component);
 				TryHideInteractionWidgetOnInteractable(Component);
+
+				if (OnInteractableUnsubscribedDelegate.IsBound())
+				{
+					OnInteractableUnsubscribedDelegate.Broadcast();
+				}
 			}
 
 			ActorsToInteract.Remove(Component);
@@ -103,8 +114,13 @@ void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
 			if (!ActorsToInteract.Num())
 			{
 				TryHideInteractionWidget(Component);
+
+				if (OnNoInteractablesLeftDelegate.IsBound())
+				{
+					OnNoInteractablesLeftDelegate.Broadcast();
+				}
 			}
-			
+
 			if (CanShowSystemLog)
 			{
 				UE_LOG(InteractionSystem, Log, TEXT("Removed %s from ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
@@ -155,7 +171,7 @@ void UPlayerInteractionComponent::InteractWithInteractables()
 
 		for (UInteractableComponent* ActorToInteract : ActorsToInteract)
 		{
-			if (ActorToInteract->CanInteract())
+			if (ActorToInteract->CanInteract(GetOwner()))
 			{
 				ActorToInteract->Interact();
 
@@ -347,7 +363,7 @@ bool UPlayerInteractionComponent::CanInteractWithAnyInteractable()
 {
 	for (UInteractableComponent* ActorToInteract : ActorsToInteract)
 	{
-		if (ActorToInteract->CanInteract())
+		if (ActorToInteract->CanInteract(GetOwner()))
 		{
 			return true;
 		}
@@ -397,7 +413,9 @@ void UPlayerInteractionComponent::TryShowInteractionWidget(UInteractableComponen
 
 void UPlayerInteractionComponent::AddActorToInteract(AActor* Actor)
 {
-	if (!Actor)
+	APawn* Temp = Cast<APawn>(GetOwner());
+
+	if (!Actor || !Temp || !Temp->IsLocallyControlled())
 	{
 		return;
 	}
@@ -407,9 +425,24 @@ void UPlayerInteractionComponent::AddActorToInteract(AActor* Actor)
 	if (Component && !ActorsToInteract.Contains(Component))
 	{
 		ActorsToInteract.Add(Component);
-		Component->SubscribeToPlayer(GetOwner());
+		Component->SubscribeToComponent(GetOwner());
 		Component->InstancedDSP = DSProperties;
-		
+
+		Component->SetWidgetRotationSettings(bRotateWidgetsTowardsPlayerCamera, bRotateWidgetsTowardsPlayerPawn);
+
+		if (ActorsToInteract.Num() == 1)
+		{
+			if (OnFirstInteractableSubscribedDelegate.IsBound())
+			{
+				OnFirstInteractableSubscribedDelegate.Broadcast();
+			}
+		}
+
+		if (OnInteractableSubscribedDelegate.IsBound())
+		{
+			OnInteractableSubscribedDelegate.Broadcast();
+		}
+
 		if (CanShowSystemLog)
 		{
 			UE_LOG(InteractionSystem, Log, TEXT("Added %s to ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
