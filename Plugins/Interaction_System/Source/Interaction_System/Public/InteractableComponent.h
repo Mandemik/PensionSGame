@@ -12,6 +12,9 @@ class USphereComponent;
 class UWidgetComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteract);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCanInteract);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSubscribed);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnUnsubscribed);
 
 USTRUCT(BlueprintType)
 struct FInteractable
@@ -77,11 +80,15 @@ class INTERACTION_SYSTEM_API UInteractableComponent : public USceneComponent, pu
 
 private:
 
-	UPlayerInteractionComponent* Component;
+	bool bCanBroadcastCanInteract : 1;
+
+	TArray<UPlayerInteractionComponent*> PlayerComponents;
 
 	FRotator WidgetRotation;
 
-	uint8 AmountOfDebugStrings = 1;
+	bool bRotateWidgetsTowardsCamera : 1;
+
+	bool bRotateWidgetsTowardsPlayerPawnCMP : 1;
 
 public:
 
@@ -95,23 +102,49 @@ public:
 
 	TSubclassOf<UUserWidget> InteractionWidgetOnInteractableClass;
 
-	bool IsInteractionWidgetOnInteractableHidden = true;
+	bool IsInteractionWidgetOnInteractableHidden : 1;
 
-	bool IsInteractionMarkerHidden = true;
+	bool IsInteractionMarkerHidden : 1;
 
-	bool CanShowInteractionMarker = true;
+	bool CanShowInteractionMarker : 1;
+
+	FDebugStringProperties InstancedDSP;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
+	TArray<AActor*> SubscribedPlayers;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
+	FInteractable InteractableStructure;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
+	int32 AmountOfSubscribedPlayers = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
+	bool bUseRotationVariablesFromPlayerComponent = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"), Category = "Interaction")
+	bool bRotateWidgetsTowardsPlayerCamera = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"), Category = "Interaction")
+	bool bRotateWidgetsTowardsPlayerPawn = false;
+
+#pragma region Delegates
+
+public:
 
 	UPROPERTY(BlueprintAssignable)
 	FOnInteract InteractDelegate;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
-	AActor* SubscribedPlayer;
+	UPROPERTY(BlueprintAssignable)
+	FOnCanInteract OnCanInteractDelegate;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Interactable Debug Options")
-	FDebugStringProperties InstancedDSP;
+	UPROPERTY(BlueprintAssignable)
+	FOnSubscribed OnSubscribedDelegate;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
-	FInteractable InteractableStructure;
+	UPROPERTY(BlueprintAssignable)
+	FOnUnsubscribed OnUnsubscribedDelegate;
+
+#pragma endregion
 
 public:
 
@@ -128,16 +161,25 @@ public:
 	void HideInteractionMarker();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void SubscribeToPlayer(AActor* Player) override;
+	void SubscribeToComponent(AActor* Player) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void UnsubscribeFromPlayer() override;
+	void UnsubscribeFromComponent(AActor* Player) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	const uint8 GetPriority() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	const bool CanInteract() override;
+	bool IsAnySubscribedPlayerLocallyControlled();
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	bool CanAnyPlayerInteract();
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	APawn* GetLocallyControlledPlayer();
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	const bool CanInteract(AActor* Player) override;
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void Interact() override;
@@ -146,17 +188,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void Enable();
 
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void SetWidgetRotationSettings(bool IsCameraRotation, bool IsPawnRotation);
+
 private:
 
 	UInteractableComponent();
 
-	void DrawDebugStrings();
+	void BroadcastCanInteract(UPlayerInteractionComponent* PlayerComponent);
 
-	bool CheckReachability() const;
+	void RotateWidgetsToPlayerCamera();
 
-	const float CheckDistanceToPlayer() const;
+	void RotateWidgetsToPlayerPawn();
 
-	const float CheckAngleToPlayer() const;
+	void DrawDebugStrings(AActor* Player);
+
+	bool CheckReachability(AActor* SubscribedPlayer) const;
+
+	const float CheckDistanceToPlayer(AActor* SubscribedPlayer) const;
+
+	const float CheckAngleToPlayer(AActor* SubscribedPlayer) const;
 
 protected:
 
