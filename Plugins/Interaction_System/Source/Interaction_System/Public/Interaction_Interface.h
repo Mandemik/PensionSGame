@@ -25,7 +25,7 @@ public:
 		return 0;
 	}
 
-	virtual const bool CanInteract()
+	virtual const bool CanInteract(AActor* Player)
 	{
 		return true;
 	}
@@ -35,12 +35,12 @@ public:
 		UE_LOG(InteractionSystem, Warning, TEXT("Interacting without implementation for interaction."));
 	}
 
-	virtual void SubscribeToPlayer(AActor* Player)
+	virtual void SubscribeToComponent(AActor* Player)
 	{
 		UE_LOG(InteractionSystem, Warning, TEXT("Subscribing to player without implementation."));
 	}
 
-	virtual void UnsubscribeFromPlayer()
+	virtual void UnsubscribeFromComponent(AActor* Player)
 	{
 		UE_LOG(InteractionSystem, Warning, TEXT("Unsubscribing to player without implementation."));
 	}
