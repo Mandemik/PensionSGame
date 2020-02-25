@@ -6,9 +6,6 @@
 #include "Blueprint/UserWidget.h"
 #include "DeathWidget.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class PENSIONS_API UDeathWidget : public UUserWidget
 {
