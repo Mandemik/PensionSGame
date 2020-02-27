@@ -21,6 +21,14 @@ UInteractableComponent::UInteractableComponent()
 	InteractionMarker = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractableMarker"));
 	InteractionWidgetOnInteractable = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidgetOnInteractable"));
 
+	bCanBroadcastCanInteract = true;
+
+	bReplicates = false;
+
+	CanShowInteractionMarker = true;
+	IsInteractionMarkerHidden = true;
+	IsInteractionWidgetOnInteractableHidden = true;
+
 	if (GetOwner())
 	{
 		this->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
@@ -38,25 +46,48 @@ void UInteractableComponent::Interact()
 	}
 }
 
-void UInteractableComponent::UnsubscribeFromPlayer()
+void UInteractableComponent::UnsubscribeFromComponent(AActor* Player)
 {
-	SetComponentTickEnabled(false);
+	SubscribedPlayers.Pop(Player);
+	PlayerComponents.Pop(Player->FindComponentByClass(UPlayerInteractionComponent::StaticClass()));
+	AmountOfSubscribedPlayers--;
 
-	SubscribedPlayer = nullptr;
-	Component = nullptr;
+	if (OnUnsubscribedDelegate.IsBound())
+	{
+		OnUnsubscribedDelegate.Broadcast();
+	}
+
+	if (SubscribedPlayers.Num() <= 0)
+	{
+		SetComponentTickEnabled(false);
+	}
 }
 
-void UInteractableComponent::SubscribeToPlayer(AActor* Player)
+void UInteractableComponent::SubscribeToComponent(AActor* Player)
 {
 	if (Player)
 	{
-		SetComponentTickEnabled(true);
-		SubscribedPlayer = Player;
+		SubscribedPlayers.Add(Player);
+		AmountOfSubscribedPlayers++;
+		UPlayerInteractionComponent* Temp = Cast<UPlayerInteractionComponent>(SubscribedPlayers[AmountOfSubscribedPlayers - 1]->FindComponentByClass(UPlayerInteractionComponent::StaticClass()));
 
-		if (SubscribedPlayer)
+		if (Temp)
 		{
-			Component = Cast<UPlayerInteractionComponent>(SubscribedPlayer->FindComponentByClass(UPlayerInteractionComponent::StaticClass()));
+			SetComponentTickEnabled(true);
+			PlayerComponents.Add(Temp);
+
+			if (OnSubscribedDelegate.IsBound())
+			{
+				OnSubscribedDelegate.Broadcast();
+			}
 		}
+		else
+		{
+			SubscribedPlayers.Pop(Player);
+			AmountOfSubscribedPlayers--;
+			UE_LOG(LogTemp, Warning, TEXT("Tried to subscribe to a player %s with invalid interaction component or without one."), *GetNameSafe(Player));
+		}
+
 	}
 }
 
@@ -65,7 +96,7 @@ const uint8 UInteractableComponent::GetPriority()
 	return InteractableStructure.Priority;
 }
 
-const bool UInteractableComponent::CanInteract()
+const bool UInteractableComponent::CanInteract(AActor* Player)
 {
 	if (InteractableStructure.bDisabled)
 	{
@@ -74,15 +105,15 @@ const bool UInteractableComponent::CanInteract()
 
 	if (InteractableStructure.bHasToBeReacheable)
 	{
-		if (!CheckReachability())
-		{ 
+		if (!CheckReachability(Player))
+		{
 			return false;
 		}
 	}
 
 	if (InteractableStructure.bDoesAngleMatter)
 	{
-		if (CheckAngleToPlayer() > InteractableStructure.PlayersAngleMarginOfErrorToInteractable)
+		if (CheckAngleToPlayer(Player) > InteractableStructure.PlayersAngleMarginOfErrorToInteractable)
 		{
 			return false;
 		}
@@ -90,7 +121,7 @@ const bool UInteractableComponent::CanInteract()
 
 	if (InteractableStructure.bDoesDistanceToPlayerMatter)
 	{
-		if (CheckDistanceToPlayer() > InteractableStructure.MaximumDistanceToPlayer)
+		if (CheckDistanceToPlayer(Player) > InteractableStructure.MaximumDistanceToPlayer)
 		{
 			return false;
 		}
@@ -99,9 +130,9 @@ const bool UInteractableComponent::CanInteract()
 	return true;
 }
 
-bool UInteractableComponent::CheckReachability() const
+bool UInteractableComponent::CheckReachability(AActor* SubscribedPlayer) const
 {
-	if (GetOwner() && SubscribedPlayer && GetWorld())
+	if (GetOwner() && SubscribedPlayers.Num() > 0 && GetWorld())
 	{
 		const FVector& InteractableLocation = GetComponentLocation();
 		const FVector& PlayerLocation = SubscribedPlayer->GetActorLocation();
@@ -118,7 +149,7 @@ bool UInteractableComponent::CheckReachability() const
 		{
 			if (OutHit.bBlockingHit)
 			{
-				if(OutHit.GetActor() && OutHit.GetActor()->FindComponentByClass(this->GetClass()) == this)
+				if (OutHit.GetActor() && OutHit.GetActor()->FindComponentByClass(this->GetClass()) == this)
 				{
 					return true;
 				}
@@ -129,9 +160,9 @@ bool UInteractableComponent::CheckReachability() const
 	return false;
 }
 
-const float UInteractableComponent::CheckDistanceToPlayer() const
+const float UInteractableComponent::CheckDistanceToPlayer(AActor* SubscribedPlayer) const
 {
-	if (GetOwner() && SubscribedPlayer)
+	if (GetOwner() && SubscribedPlayers.Num() > 0)
 	{
 		const FVector& InteractableLocation = GetComponentLocation();
 		const FVector& PlayerLocation = SubscribedPlayer->GetActorLocation();
@@ -142,7 +173,7 @@ const float UInteractableComponent::CheckDistanceToPlayer() const
 	return -1.f;
 }
 
-const float UInteractableComponent::CheckAngleToPlayer() const
+const float UInteractableComponent::CheckAngleToPlayer(AActor* SubscribedPlayer) const
 {
 	FVector InteractableLocation = GetComponentLocation();
 
@@ -167,12 +198,11 @@ const float UInteractableComponent::CheckAngleToPlayer() const
 	return 0.f;
 }
 
-void UInteractableComponent::DrawDebugStrings()
+void UInteractableComponent::DrawDebugStrings(AActor* Player)
 {
-
-	if (GetOwner() && GetWorld())
+	if (GetWorld() && SubscribedPlayers.Num() > 0)
 	{
-		AmountOfDebugStrings = 1;
+		uint8 AmountOfDebugStrings = 1;
 
 		// Priority
 		DrawDebugString(GetWorld(),
@@ -196,8 +226,8 @@ void UInteractableComponent::DrawDebugStrings()
 			DrawDebugString(GetWorld(),
 				InteractableStructure.bOverrideDebugStringLocation ? InteractableStructure.NewDebugStringLocation
 				: FVector(GetComponentLocation().X, GetComponentLocation().Y, GetComponentLocation().Z - (AmountOfDebugStrings * InstancedDSP.HeightDifferenceInDebugStrings)),
-				FString("Distance: ") + FString::SanitizeFloat(CheckDistanceToPlayer(), 2), NULL,
-				CheckDistanceToPlayer() < InteractableStructure.MaximumDistanceToPlayer ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
+				FString("Distance: ") + FString::SanitizeFloat(CheckDistanceToPlayer(Player), 2), NULL,
+				CheckDistanceToPlayer(Player) < InteractableStructure.MaximumDistanceToPlayer ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
 				0.01f, InstancedDSP.bDrawShadow, InstancedDSP.FontScale);
 
 			AmountOfDebugStrings++;
@@ -209,26 +239,25 @@ void UInteractableComponent::DrawDebugStrings()
 			DrawDebugString(GetWorld(),
 				InteractableStructure.bOverrideDebugStringLocation ? InteractableStructure.NewDebugStringLocation
 				: FVector(GetComponentLocation().X, GetComponentLocation().Y, GetComponentLocation().Z - (AmountOfDebugStrings * InstancedDSP.HeightDifferenceInDebugStrings)),
-				CheckReachability() ? FString("Reachability: Reachable") : FString("Reachability: Not Reachable"), NULL,
-				CheckReachability() ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
+				CheckReachability(Player) ? FString("Reachability: Reachable") : FString("Reachability: Not Reachable"), NULL,
+				CheckReachability(Player) ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
 				0.01f, InstancedDSP.bDrawShadow, InstancedDSP.FontScale);
 
 			AmountOfDebugStrings++;
 		}
-		
+
 		// Angle
 		if (InteractableStructure.bDoesAngleMatter)
 		{
 			DrawDebugString(GetWorld(),
 				InteractableStructure.bOverrideDebugStringLocation ? InteractableStructure.NewDebugStringLocation
 				: FVector(GetComponentLocation().X, GetComponentLocation().Y, GetComponentLocation().Z - (AmountOfDebugStrings * InstancedDSP.HeightDifferenceInDebugStrings)),
-				FString("Angle: ") + FString::SanitizeFloat(CheckAngleToPlayer(), 2), NULL,
-				CheckAngleToPlayer() <= InteractableStructure.PlayersAngleMarginOfErrorToInteractable ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
+				FString("Angle: ") + FString::SanitizeFloat(CheckAngleToPlayer(Player), 2), NULL,
+				CheckAngleToPlayer(Player) <= InteractableStructure.PlayersAngleMarginOfErrorToInteractable ? InstancedDSP.ValidTextColor : InstancedDSP.InvalidTextColor,
 				0.01f, InstancedDSP.bDrawShadow, InstancedDSP.FontScale);
 
 			AmountOfDebugStrings++;
 		}
-
 	}
 }
 
@@ -300,28 +329,152 @@ void UInteractableComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
+bool UInteractableComponent::IsAnySubscribedPlayerLocallyControlled()
+{
+	if (GetLocallyControlledPlayer())
+	{
+		return true;
+	}
+
+	return false;
+}
+
+APawn* UInteractableComponent::GetLocallyControlledPlayer()
+{
+	for (const auto& SubscribedPlayer : SubscribedPlayers)
+	{
+		APawn* PlayerPawn = Cast<APawn>(SubscribedPlayer);
+
+		if (PlayerPawn && PlayerPawn->IsLocallyControlled())
+		{
+			return PlayerPawn;
+		}
+	}
+
+	return nullptr;
+}
+
+void UInteractableComponent::SetWidgetRotationSettings(bool IsCameraRotation, bool IsPawnRotation)
+{
+	if (IsCameraRotation)
+	{
+		bRotateWidgetsTowardsCamera = true;
+		bRotateWidgetsTowardsPlayerPawnCMP = false;
+	}
+	else if (IsPawnRotation)
+	{
+		bRotateWidgetsTowardsCamera = false;
+		bRotateWidgetsTowardsPlayerPawnCMP = true;
+	}
+}
+
+void UInteractableComponent::RotateWidgetsToPlayerCamera()
+{
+	WidgetRotation = UKismetMathLibrary::FindLookAtRotation(GetOwner()->GetActorLocation(), UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->GetCameraLocation());
+
+	if (InteractionWidgetOnInteractable->IsVisible())
+	{
+		InteractionWidgetOnInteractable->SetWorldRotation(WidgetRotation);
+	}
+
+	if (InteractionMarker->IsVisible())
+	{
+		InteractionMarker->SetWorldRotation(WidgetRotation);
+	}
+}
+
+void UInteractableComponent::RotateWidgetsToPlayerPawn()
+{
+	WidgetRotation = UKismetMathLibrary::FindLookAtRotation(GetOwner()->GetActorLocation(), GetLocallyControlledPlayer()->GetActorLocation());
+
+	if (InteractionWidgetOnInteractable->IsVisible())
+	{
+		InteractionWidgetOnInteractable->SetWorldRotation(WidgetRotation);
+	}
+
+	if (InteractionMarker->IsVisible())
+	{
+		InteractionMarker->SetWorldRotation(WidgetRotation);
+	}
+}
+
+void UInteractableComponent::BroadcastCanInteract(UPlayerInteractionComponent* PlayerComponent)
+{
+	if (PlayerComponent && PlayerComponent->OnCanInteractDelegate.IsBound())
+	{
+		PlayerComponent->OnCanInteractDelegate.Broadcast();
+	}
+
+	if (OnCanInteractDelegate.IsBound())
+	{
+		OnCanInteractDelegate.Broadcast();
+	}
+}
+
+bool UInteractableComponent::CanAnyPlayerInteract()
+{
+	for (const auto& Component : PlayerComponents)
+	{
+		if (CanInteract(Component->GetOwner()))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void UInteractableComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if ((InstancedDSP.bDrawDebugStringsByDefault && InteractableStructure.bAlwaysDrawDebugStrings) || InteractableStructure.bAlwaysDrawDebugStrings)
+	if (SubscribedPlayers.Num() > 0)
 	{
-		DrawDebugStrings();
+		if ((InstancedDSP.bDrawDebugStringsByDefault && InteractableStructure.bAlwaysDrawDebugStrings) || InteractableStructure.bAlwaysDrawDebugStrings)
+		{
+			if (GetLocallyControlledPlayer())
+			{
+				DrawDebugStrings(GetLocallyControlledPlayer());
+			}
+			else
+			{
+				SetComponentTickEnabled(false);
+			}
+		}
 	}
 
-	if (Component)
+	if (PlayerComponents.Num() > 0)
 	{
-		if (!InteractableStructure.bDisabled)
+		for (const auto& Component : PlayerComponents)
 		{
-			if (IsInteractionMarkerHidden)
+			if (!InteractableStructure.bDisabled)
 			{
-				Component->TryShowInteractionMarker(this);
-			}
+				if (IsInteractionMarkerHidden)
+				{
+					Component->TryShowInteractionMarker(this);
+				}
 
-			if (CanInteract())
-			{
-				Component->TryShowInteractionWidget(this);
-				Component->TryShowInteractionWidgetOnInteractable(this);
+				if (CanInteract(Component->GetOwner()))
+				{
+					Component->TryShowInteractionWidget(this);
+					Component->TryShowInteractionWidgetOnInteractable(this);
+
+					if (bCanBroadcastCanInteract)
+					{
+						BroadcastCanInteract(Component);
+						bCanBroadcastCanInteract = false;
+					}
+				}
+				else
+				{
+					if (!CanAnyPlayerInteract())
+					{
+						bCanBroadcastCanInteract = true;
+					}
+
+					Component->TryHideInteractionWidget(this);
+					Component->TryHideInteractionWidgetOnInteractable(this);
+				}
 			}
 			else
 			{
@@ -329,28 +482,30 @@ void UInteractableComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 				Component->TryHideInteractionWidgetOnInteractable(this);
 			}
 		}
-		else
-		{
-			Component->TryHideInteractionWidget(this);
-			Component->TryHideInteractionWidgetOnInteractable(this);
-		}
 	}
 
 	if (InteractionMarker->IsVisible() || InteractionWidgetOnInteractable->IsVisible())
 	{
-		WidgetRotation = UKismetMathLibrary::FindLookAtRotation(GetOwner()->GetActorLocation(), UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->GetCameraLocation());
-
-		if (InteractionWidgetOnInteractable->IsVisible())
+		if (bUseRotationVariablesFromPlayerComponent)
 		{
-			InteractionWidgetOnInteractable->SetWorldRotation(WidgetRotation);
+			if (bRotateWidgetsTowardsCamera)
+			{
+				RotateWidgetsToPlayerCamera();
+			}
+			else if (bRotateWidgetsTowardsPlayerPawnCMP)
+			{
+				RotateWidgetsToPlayerPawn();
+			}
 		}
-
-		if (InteractionMarker->IsVisible())
+		else if (bRotateWidgetsTowardsPlayerCamera)
 		{
-			InteractionMarker->SetWorldRotation(WidgetRotation);
+			RotateWidgetsToPlayerCamera();
+		}
+		else if (bRotateWidgetsTowardsPlayerPawn)
+		{
+			RotateWidgetsToPlayerPawn();
 		}
 	}
 
-	
 }
 
