@@ -67,8 +67,15 @@ void UInteractableComponent::UnsubscribeFromComponent(AActor* Player)
 		return;
 	}
 
-	SubscribedPlayers.Pop(Player);
-	PlayerComponents.Pop(Player->FindComponentByClass(UPlayerInteractionComponent::StaticClass()));
+	SubscribedPlayers.Remove(Player);
+
+	UPlayerInteractionComponent* PC = Cast<UPlayerInteractionComponent>(Player->FindComponentByClass(UPlayerInteractionComponent::StaticClass()));
+
+	if (PC)
+	{
+		PlayerComponents.Remove(PC);
+	}
+	
 	AmountOfSubscribedPlayers--;
 
 	if (OnUnsubscribedDelegate.IsBound())
@@ -97,7 +104,7 @@ void UInteractableComponent::SubscribeToComponent(AActor* Player)
 
 	if (!Temp)
 	{
-		SubscribedPlayers.Pop(Player);
+		SubscribedPlayers.Remove(Player);
 		AmountOfSubscribedPlayers--;
 
 		UE_LOG(InteractionSystem, Warning, TEXT("Tried to subscribe to a player %s with invalid interaction component or without one in SubscribeToComponent()."), *GetNameSafe(Player));
