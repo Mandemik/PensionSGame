@@ -11,10 +11,9 @@
 class USphereComponent;
 class UWidgetComponent;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteract);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCanInteract);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSubscribed);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnUnsubscribed);
+constexpr float PlayerLooksAtInteractableValue = 3.14f;
+constexpr float Multiplier = 180.f / PI;
+constexpr float FAILED_Angle = 400.f;
 
 USTRUCT(BlueprintType)
 struct FInteractable
@@ -33,14 +32,20 @@ public:
 	float PlayersAngleMarginOfErrorToInteractable = 40.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bRandomizePriority"), Category = "Interactable Option")
-	uint8 Priority = 0;
+	int32 Priority = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"), Category = "Interactable Option")
+	int32 PriorityRandomizedMIN = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"), Category = "Interactable Option")
+	int32 PriorityRandomizedMAX = 255;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	bool bRandomizePriority = false;
 
 	// Disable interaction option with this object after usage
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
 	bool bDisableAfterUsage = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
-	bool bRandomizePriority = false;
 
 	/*If true the interactable will always check if player can reach to interactable (interactable is not behind wall etc), if false
 	the interactable will ignore the reach to interactable.*/
@@ -80,11 +85,17 @@ class INTERACTION_SYSTEM_API UInteractableComponent : public USceneComponent, pu
 
 private:
 
-	bool bCanBroadcastCanInteract : 1;
-
 	TArray<UPlayerInteractionComponent*> PlayerComponents;
 
 	FRotator WidgetRotation;
+
+	UPROPERTY(Replicated)
+	bool bEpicFailed = true;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SetEnability)
+	bool Disabled;
+
+	bool bCanBroadcastCanInteract : 1;
 
 	bool bRotateWidgetsTowardsCamera : 1;
 
@@ -102,22 +113,34 @@ public:
 
 	TSubclassOf<UUserWidget> InteractionWidgetOnInteractableClass;
 
+	FDebugStringProperties InstancedDSP;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!RandomizeRarityValue"), Category = "Interaction")
+	int32 RarityValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
+	bool RandomizeRarityValue = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"), Category = "Interaction")
+	int32 RarityRandomizedMIN = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"), Category = "Interaction")
+	int32 RarityRandomizedMAX = 255;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
+	TArray<AActor*> SubscribedPlayers;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Interaction")
+	FInteractable InteractableStructure;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
+	int32 AmountOfSubscribedPlayers = 0;
+
 	bool IsInteractionWidgetOnInteractableHidden : 1;
 
 	bool IsInteractionMarkerHidden : 1;
 
 	bool CanShowInteractionMarker : 1;
-
-	FDebugStringProperties InstancedDSP;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
-	TArray<AActor*> SubscribedPlayers;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
-	FInteractable InteractableStructure;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
-	int32 AmountOfSubscribedPlayers = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
 	bool bUseRotationVariablesFromPlayerComponent = true;
@@ -133,16 +156,22 @@ public:
 public:
 
 	UPROPERTY(BlueprintAssignable)
-	FOnInteract InteractDelegate;
+	FDynamicMulticastDelegate InteractDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FOnCanInteract OnCanInteractDelegate;
+	FDynamicMulticastDelegate OnCanInteractDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FOnSubscribed OnSubscribedDelegate;
+	FDynamicMulticastDelegate OnSubscribedDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FOnUnsubscribed OnUnsubscribedDelegate;
+	FDynamicMulticastDelegate OnUnsubscribedDelegate;
+
+	UPROPERTY(BlueprintAssignable)
+	FDynamicMulticastDelegate OnInteractionWidgetOnInteractableUsable;
+
+	UPROPERTY(BlueprintAssignable)
+	FDynamicMulticastDelegate OnInteractionMarkerUsable;
 
 #pragma endregion
 
@@ -184,9 +213,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void Interact() override;
 
-	// Enable a disabled interactable for interaction
+	// Enable an disabled interactable for interaction on client
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void Enable();
+
+	// Disable an enabled interactable for interaction on client
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void Disable();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void SetWidgetRotationSettings(bool IsCameraRotation, bool IsPawnRotation);
@@ -194,6 +227,8 @@ public:
 private:
 
 	UInteractableComponent();
+
+	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
 
 	void BroadcastCanInteract(UPlayerInteractionComponent* PlayerComponent);
 
@@ -208,6 +243,9 @@ private:
 	const float CheckDistanceToPlayer(AActor* SubscribedPlayer) const;
 
 	const float CheckAngleToPlayer(AActor* SubscribedPlayer) const;
+
+	UFUNCTION()
+	void OnRep_SetEnability();
 
 protected:
 

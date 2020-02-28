@@ -11,11 +11,7 @@ class USphereComponent;
 class UArrowComponent;
 class UUserWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractableSubscribed);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInteractableUnsubscribed);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFirstInteractableSubscribed);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNoInteractablesLeft);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerCanInteract);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FDynamicMulticastDelegate);
 
 USTRUCT(BlueprintType)
 struct FDebugStringProperties
@@ -23,9 +19,6 @@ struct FDebugStringProperties
 	GENERATED_USTRUCT_BODY()
 
 public:
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction Debug")
-	bool bDrawDebugStringsByDefault = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction Debug")
 	FColor ValidTextColor = FColor::Green;
@@ -44,6 +37,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction Debug")
 	bool bUseOwningActorLocationForDebugText = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction Debug")
+	bool bDrawDebugStringsByDefault = true;
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent), Blueprintable)
@@ -53,7 +49,7 @@ class INTERACTION_SYSTEM_API UPlayerInteractionComponent final : public UActorCo
 
 private:
 
-	bool IsInteractionWidgetHidden : 1;
+	bool IsInteractionWidgetHidden;
 
 	TArray<UInteractableComponent*> ActorsToInteract;
 
@@ -92,6 +88,15 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
 	TSubclassOf<UUserWidget> InteractableMarkerBP;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	bool bUseLowerPriorityFirst = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
+	bool bIsUsingFirstPersonMode = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (EditCondition = "bIsUsingFirstPersonMode"), Category = "Interaction")
+	bool bPlayerHasToLookOnTheObjectInsteadOfCheckingAngle = true;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
 	bool CanShowSystemLog = false;
 
@@ -117,7 +122,7 @@ private:
 
 private:
 
-	void ShowInteractionWidgetOnInteractable(TSubclassOf<UUserWidget> WidgetClass, UInteractableComponent* Component);
+	void ShowInteractionWidgetOnInteractable(TSubclassOf<UUserWidget>& WidgetClass, UInteractableComponent* Component);
 
 public:
 
@@ -131,7 +136,7 @@ public:
 
 private:
 
-	void ShowInteractionMarker(TSubclassOf<UUserWidget> WidgetClass, UInteractableComponent* Component);
+	void ShowInteractionMarker(TSubclassOf<UUserWidget>& WidgetClass, UInteractableComponent* Component);
 
 public:
 
@@ -145,7 +150,7 @@ public:
 
 private:
 
-	void ShowInteractionWidget(TSubclassOf<UUserWidget> WidgetClass);
+	void ShowInteractionWidget(TSubclassOf<UUserWidget>& WidgetClass);
 
 	void HideInteractionWidget();
 
@@ -162,19 +167,19 @@ public:
 public:
 
 	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
-	FOnInteractableSubscribed OnInteractableSubscribedDelegate;
+	FDynamicMulticastDelegate OnInteractableSubscribedDelegate;
 
 	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
-	FOnInteractableUnsubscribed OnInteractableUnsubscribedDelegate;
+	FDynamicMulticastDelegate OnInteractableUnsubscribedDelegate;
 
 	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
-	FOnFirstInteractableSubscribed OnFirstInteractableSubscribedDelegate;
+	FDynamicMulticastDelegate OnFirstInteractableSubscribedDelegate;
 
 	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
-	FOnNoInteractablesLeft OnNoInteractablesLeftDelegate;
+	FDynamicMulticastDelegate OnNoInteractablesLeftDelegate;
 
 	UPROPERTY(BlueprintAssignable, Category = "InteractionDelegates")
-	FOnPlayerCanInteract OnCanInteractDelegate;
+	FDynamicMulticastDelegate OnCanInteractDelegate;
 
 #pragma endregion
 
@@ -199,6 +204,6 @@ public:
 	void RemoveActorToInteract(AActor* Actor);
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void ChangeInteractionWidget(TSubclassOf<UUserWidget> WidgetClass);
+	void ChangeInteractionWidget(TSubclassOf<UUserWidget>& WidgetClass);
 
 };
