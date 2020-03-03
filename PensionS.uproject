@@ -20,6 +20,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "Inventory_System",
+			"Enabled": true
+		},
+		{
 			"Name": "SteamVR",
 			"Enabled": false,
 			"SupportedTargetPlatforms": [
