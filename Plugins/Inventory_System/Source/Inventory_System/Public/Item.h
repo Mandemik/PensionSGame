@@ -10,7 +10,7 @@ class UStaticMesh;
 class UTexture2D;
 class UInventoryComponent;
 
-UCLASS(Abstract, BlueprintType, Blueprintable, EditInlineNew, DefaultToInstanced)
+UCLASS(BlueprintType, Blueprintable)
 class INVENTORY_SYSTEM_API UItem : public UObject
 {
 	GENERATED_BODY()
@@ -41,10 +41,5 @@ public:
 	float Weight;
 
 	virtual void Use(APawn* User) {};
-
-	FORCEINLINE virtual UWorld* GetWorld() const
-	{ 
-		return GetWorld(); 
-	};
 	
 };
